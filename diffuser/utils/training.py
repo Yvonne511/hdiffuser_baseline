@@ -60,6 +60,7 @@ class Trainer(object):
         n_reference=8,
         n_samples=2,
         bucket=None,
+        data_aug=False,
     ):
         super().__init__()
         self.model = diffusion_model
@@ -103,6 +104,7 @@ class Trainer(object):
 
         self.reset_parameters()
         self.step = 0
+        self.data_aug = data_aug
 
     def reset_parameters(self):
         self.ema_model.load_state_dict(self.model.state_dict())
@@ -122,6 +124,33 @@ class Trainer(object):
         for step in range(n_train_steps):
             for i in range(self.gradient_accumulate_every):
                 batch = next(self.dataloader)
+                from diffuser.datasets_ours.augmentations import pusht_data_augmentation
+                if self.data_aug:
+                    # trajectories = observations
+                    # trajectories = np.concatenate([actions, observations], axis=-1)
+                    # batch['trajectories']: 2 action_dim, 8 state_dim
+                    obs = None
+                    act = None
+                    if self.dataset.jump_action == "none":
+                        obs = batch.trajectories
+                    else:
+                        act = batch.trajectories[..., :self.dataset.jump * self.dataset.action_dim] # self.dataset.jump should be 1
+                        obs = batch.trajectories[..., self.dataset.jump * self.dataset.action_dim:]
+                        act = self.dataset.normalizer.unnormalize(act, "actions")
+                    obs = self.dataset.normalizer.unnormalize(obs, "observations")
+                    obs_aug, act_aug = pusht_data_augmentation(
+                        obs, # states
+                        acts=act, # actions
+                    )
+                    obs_aug = self.dataset.normalizer.normalize(obs_aug, "observations")
+                    if act_aug is not None: 
+                        act_aug = self.dataset.normalizer.normalize(act_aug, "actions")
+                        traj_aug = torch.cat([act_aug, obs_aug], dim=-1)
+                    else: 
+                        traj_aug = obs_aug
+                    cond = dict(batch.conditions)
+                    for t in cond.keys(): cond[t] = obs_aug[:, t]
+                    batch = batch._replace(trajectories=traj_aug, conditions=cond)
                 batch = batch_to_device(batch)
 
                 loss, infos = self.model.loss(*batch)

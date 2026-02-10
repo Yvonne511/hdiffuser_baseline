@@ -6,7 +6,7 @@ import pdb
 from diffuser.guides.policies import Policy
 import diffuser.datasets as datasets
 import diffuser.utils as utils
-from diffuser.models.hier_diffusion import HierDiffusion
+# from diffuser.models.hier_diffusion import HierDiffusion
 import os
 
 
