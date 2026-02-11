@@ -238,8 +238,9 @@ for i in range(n_evals):
         ll_args.horizon - 1: ll_cond_[:, -1],
     }
     _, ll_samples = ll_policy(ll_cond, batch_size=-1)
-    ll_actions = ll_samples.actions
-    ll_action_seq = ll_actions.reshape(B, (M - 1) * (hl_args.jump+1), -1)[0]
+    ll_actions = ll_samples.actions.reshape(B, (M-1), hl_args.jump + 1, -1)
+    ll_actions_seq = ll_actions[:, :, :hl_args.jump]
+    ll_action_seq = ll_actions_seq.reshape(B, (M-1) * hl_args.jump, -1)[0]
 
     ll_samples = ll_samples.observations
     ll_samples = ll_samples.reshape(B, (M - 1), ll_args.horizon, -1)
