@@ -97,7 +97,7 @@ base = {
         "condition": True,
         "kernel_size": 5,
         "dim": 32,
-        "n_diffusion_steps": 258,
+        "n_diffusion_steps": 256,
         "normalizer": "LimitsNormalizer",
 
         ## serialization
