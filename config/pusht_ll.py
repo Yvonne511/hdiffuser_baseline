@@ -11,6 +11,7 @@ diffusion_args_to_watch = [
     ('prefix', ''),
     ('horizon', 'H'),
     ('n_diffusion_steps', 'T'),
+    ("jump", "J"),
     ('data_aug', 'aug'),
 ]
 
@@ -26,21 +27,32 @@ plan_args_to_watch = [
     ('batch_size', 'b'),
     ##
     ('conditional', 'cond'),
+    ('goal_source', ''),
+    ('n_evals', ''),
+    ("jump", "J"),
 ]
 
+logbase = "logs"
 base = {
 
     'diffusion': {
         ## model
-        'model': 'models.TemporalUnet',
-        'diffusion': 'models.GaussianDiffusion',
-        'horizon': 256,
-        'n_diffusion_steps': 256,
-        'action_weight': 1,
-        'loss_weights': None,
-        'loss_discount': 1,
-        'predict_epsilon': False,
-        'dim_mults': (1, 4, 8),
+        "model": "models.TemporalUnet",
+        "diffusion": "models.GaussianDiffusion",
+        "horizon": 16,
+        "jump": 1,
+        "jump_action": False,
+        "condition": True,
+        "n_diffusion_steps": 256,
+        "action_weight": 10,
+        "loss_weights": None,
+        "loss_discount": 1,
+        "predict_epsilon": False,
+        "dim_mults": (1, 4, 8),
+        "upsample_k": (4, 4),
+        "downsample_k": (4, 4),
+        "kernel_size": 5,
+        "dim": 32,
         'renderer': 'utils.PushTRenderer',
 
         ## dataset
@@ -53,7 +65,7 @@ base = {
         'max_path_length': 250,
 
         ## serialization
-        'logbase': 'logs',
+        "logbase": logbase,
         'prefix': 'diffusion/',
         'exp_name': watch(diffusion_args_to_watch),
 
@@ -81,23 +93,28 @@ base = {
         'device': 'cuda',
 
         ## diffusion model
-        'horizon': 256,
-        'n_diffusion_steps': 256,
-        'normalizer': 'LimitsNormalizer',
+         "horizon": 16,
+        "jump": 1,
+        "jump_action": False,
+        "condition": True,
+        "kernel_size": 5,
+        "dim": 32,
+        "n_diffusion_steps": 256,
+        "normalizer": "LimitsNormalizer",
 
         ## serialization
-        'vis_freq': 10,
-        'logbase': 'logs',
-        'prefix': 'plans/release',
-        'exp_name': watch(plan_args_to_watch),
-        'suffix': '0',
-
-        'conditional': False,
+        "logbase": logbase,
+        "vis_freq": 10,
+        "prefix": "plans/release",
+        "exp_name": watch(plan_args_to_watch),
+        "suffix": "0",
+        "conditional": False,
+        "transfer": "none",
         'data_aug': True,
 
         ## loading
-        'diffusion_loadpath': 'f:diffusion/H{horizon}_T{n_diffusion_steps}_aug{data_aug}',
-        'diffusion_epoch': 'latest',
+        "diffusion_loadpath": "f:diffusion/H{horizon}_T{n_diffusion_steps}_J{jump}_aug{data_aug}",
+        "diffusion_epoch": "latest",
     },
 
 }
@@ -112,38 +129,3 @@ base = {
     pusht episode steps:
         about 250?
 '''
-
-pusht = {
-    'diffusion': {
-        'horizon': 128,
-        'n_diffusion_steps': 256,
-        'data_aug': True,
-    },
-    'plan': {
-        'horizon': 128,
-        'n_diffusion_steps': 256,
-        'data_aug': True,
-    },
-}
-
-maze2d_umaze_v1 = {
-    'diffusion': {
-        'horizon': 128,
-        'n_diffusion_steps': 64,
-    },
-    'plan': {
-        'horizon': 128,
-        'n_diffusion_steps': 64,
-    },
-}
-
-maze2d_large_v1 = {
-    'diffusion': {
-        'horizon': 384,
-        'n_diffusion_steps': 256,
-    },
-    'plan': {
-        'horizon': 384,
-        'n_diffusion_steps': 256,
-    },
-}

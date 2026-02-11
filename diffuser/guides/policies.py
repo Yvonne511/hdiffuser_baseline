@@ -56,6 +56,11 @@ class Policy:
         ## extract action [ batch_size x horizon x transition_dim ]
         if self.action_dim != 0:
             actions = sample[:, :, : self.action_dim]
+            shape = actions.shape
+            actions = self.normalizer.unnormalize(
+                actions.reshape(*shape[:-1], 1, -1), "actions"
+            )
+            actions = actions.reshape(*shape[:-1], -1) # TODO: hack, similar to dmc, get actions directly
             action = actions[0, 0]
         else:
             actions = None
