@@ -39,7 +39,7 @@ base = {
         "model": "models.TemporalUnet",
         "diffusion": "models.GaussianDiffusion",
         "horizon": 255,
-        "jump": 15,
+        "jump": 25,
         "jump_action": "none",
         "condition": True,
         "n_diffusion_steps": 256,
@@ -92,7 +92,7 @@ base = {
 
         ## diffusion model
         "horizon": 255,
-        "jump": 15,
+        "jump": 25,
         "jump_action": "none",
         "attention": False,
         "condition": True,
@@ -131,13 +131,13 @@ base = {
 
 point_maze_large = {
     'diffusion': {
-        'horizon': 90,
+        'horizon': 75,
         'n_diffusion_steps': 256,
-        "upsample_k": (3, 4, 4),
-        "downsample_k": (4, 3, 3),
+        "upsample_k": (4, 3),
+        "downsample_k": (3, 4),
     },
     'plan': {
-        'horizon': 90,
+        'horizon': 75,
         'n_diffusion_steps': 256,
     },
 }

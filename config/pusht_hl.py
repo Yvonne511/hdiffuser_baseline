@@ -40,7 +40,7 @@ base = {
         "model": "models.TemporalUnet",
         "diffusion": "models.GaussianDiffusion",
         "horizon": 255,
-        "jump": 15,
+        "jump": 25,
         "jump_action": "none",
         "condition": True,
         "n_diffusion_steps": 256,
@@ -94,7 +94,7 @@ base = {
 
         ## diffusion model
         "horizon": 255,
-        "jump": 15,
+        "jump": 25,
         "jump_action": "none",
         "attention": False,
         "condition": True,
@@ -131,19 +131,19 @@ base = {
         medium: 250
         large: 600
     pusht episode steps:
-        about 250?
+        min 49
 '''
 
 pusht = {
     'diffusion': {
-        'horizon': 135,
+        'horizon': 125,
         'n_diffusion_steps': 256,
-        "upsample_k": (4, 5, 5), 
-        "downsample_k": (4, 4, 4),
+        "upsample_k": (4, 5),
+        "downsample_k": (4, 4),
         'data_aug': True,
     },
     'plan': {
-        'horizon': 135,
+        'horizon': 125,
         'n_diffusion_steps': 256,
         'data_aug': True,
     },

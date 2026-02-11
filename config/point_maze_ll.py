@@ -38,7 +38,7 @@ base = {
         ## model
         "model": "models.TemporalUnet",
         "diffusion": "models.GaussianDiffusion",
-        "horizon": 16,
+        "horizon": 26,
         "jump": 1,
         "jump_action": False,
         "condition": True,
@@ -48,8 +48,8 @@ base = {
         "loss_discount": 1,
         "predict_epsilon": False,
         "dim_mults": (1, 4, 8),
-        "upsample_k": (4, 4),
-        "downsample_k": (4, 4),
+        "upsample_k": (3, 4, 4),
+        "downsample_k": (4, 3, 3),
         "kernel_size": 5,
         "dim": 32,
         'renderer': 'utils.PointMazeRenderer',
@@ -91,7 +91,7 @@ base = {
         'device': 'cuda',
 
         ## diffusion model
-        "horizon": 16,
+        "horizon": 26,
         "jump": 1,
         "jump_action": False,
         "condition": True,
