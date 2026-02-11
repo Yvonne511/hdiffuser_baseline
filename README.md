@@ -16,30 +16,35 @@ PushT Command
 python scripts/train.py --config config.pusht_hl --dataset pusht
 python scripts/train.py --config config.pusht_ll --dataset pusht
 python scripts/hd_plan_ours.py --dataset pusht --goal_source random_state --n_evals 10
+python scripts/hd_plan_ours_v2.py --dataset pusht --goal_source random_state --n_evals 1 --replan --max_steps 100
 ```
 Wall Command
 ```
 python scripts/train.py --config config.wall_hl --dataset wall
 python scripts/train.py --config config.wall_ll --dataset wall
 python scripts/hd_plan_ours.py --dataset wall --goal_source random_state --n_evals 10
+python scripts/hd_plan_ours_v2.py --dataset wall --goal_source random_state --n_evals 1 --replan --max_steps 75
 ```
 Point_maze Command
 ```
 python scripts/train.py --config config.point_maze_hl --dataset point_maze
 python scripts/train.py --config config.point_maze_ll --dataset point_maze
 python scripts/hd_plan_ours.py --dataset point_maze --goal_source random_state --n_evals 10
+python scripts/hd_plan_ours_v2.py --dataset point_maze --goal_source random_state --n_evals 1 --replan  --max_steps 100
 ```
 Point_maze_medium Command
 ```
 python scripts/train.py --config config.point_maze_medium_hl --dataset point_maze_medium
 python scripts/train.py --config config.point_maze_medium_ll --dataset point_maze_medium
 python scripts/hd_plan_ours.py --dataset point_maze_medium --goal_source random_state --n_evals 10
+python scripts/hd_plan_ours_v2.py --dataset point_maze_medium --goal_source random_state --n_evals 1 --replan --max_steps 200
 ```
 Point_maze_large Command
 ```
 python scripts/train.py --config config.point_maze_large_hl --dataset point_maze_large
 python scripts/train.py --config config.point_maze_large_ll --dataset point_maze_large
 python scripts/hd_plan_ours.py --dataset point_maze_large --goal_source random_state --n_evals 10
+python scripts/hd_plan_ours_v2.py --dataset point_maze_large --goal_source random_state --n_evals 1 --replan --max_steps 200
 ```
 
 # Simple Hierarchical Planning with Diffusion

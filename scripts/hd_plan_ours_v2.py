@@ -15,6 +15,8 @@ import gym
 import random
 from einops import rearrange
 import torch
+from diffuser.env_ours.utils import aggregate_dct
+from tqdm import tqdm
 
 def get_flag(flag, default=None):
     if flag in sys.argv:
@@ -30,6 +32,8 @@ class HLParser(utils.Parser):
     config: str =f"config.{env_name}_hl"
     goal_source: str = 'dset'  # "random_state", "dset", "fix_goal"
     n_evals: int = 50
+    replan: bool = False
+    max_steps: int = 500
 
 
 hl_args = HLParser().parse_args("plan")
@@ -58,10 +62,10 @@ def make_env_and_datasets_ours(dataset_name):
         cfg = yaml.safe_load(f)
 
     env_cfg = OmegaConf.create(cfg)
-    
+
     if env_cfg.name == "wall" or env_cfg.name == "deformable_env" or "point_maze" in env_cfg.name:
         from diffuser.env_ours.serial_vector_env import SerialVectorEnv
-        env = SerialVectorEnv(
+        envs = SerialVectorEnv(
             [
                 gym.make(
                     f"{env_cfg.name}-v0", *env_cfg.args, **env_cfg.kwargs
@@ -70,7 +74,7 @@ def make_env_and_datasets_ours(dataset_name):
             ]
         )
     else:
-        env = SubprocVectorEnv(
+        envs = SubprocVectorEnv(
             [
                 lambda: gym.make(
                     f"{env_cfg.name}-v0", *env_cfg.args, **env_cfg.kwargs
@@ -79,10 +83,14 @@ def make_env_and_datasets_ours(dataset_name):
             ]
         )
 
+    wrapped_env = gym.make(f"{env_cfg.name}-v0", *env_cfg.args, **env_cfg.kwargs)
+    env = wrapped_env.unwrapped
+    env.max_episode_steps = wrapped_env._max_episode_steps
+    env.name = dataset_name
     dsets, orig_dset = hydra.utils.call(env_cfg.dataset)
-    return env, dsets, orig_dset
+    return env, envs, dsets, orig_dset
 
-env, dsets, orig_dset = make_env_and_datasets_ours(hl_args.dataset)
+env, envs, dsets, orig_dset = make_env_and_datasets_ours(hl_args.dataset)
 dset = orig_dset['valid']
 eval_seed = [s * n + 1 for n in range(n_evals)]
 
@@ -96,18 +104,18 @@ def prepare_targets():
         observations, states, actions, env_info = (
             sample_traj_segment_from_dset(traj_len=2)
         )
-        env.update_env(env_info)
+        envs.update_env(env_info)
 
         # sample random states
         fix_goal = goal_source == "fix_goal"
-        rand_init_state, rand_goal_state = env.sample_random_init_goal_states(
+        rand_init_state, rand_goal_state = envs.sample_random_init_goal_states(
             eval_seed, fix_goal=fix_goal
         )
         if hl_args.dataset == "deformable_env": # take rand init state from dset for deformable envs
             rand_init_state = np.array([x[0] for x in states])
 
-        obs_0, state_0 = env.prepare(eval_seed, rand_init_state)
-        obs_g, state_g = env.prepare(eval_seed, rand_goal_state)
+        obs_0, state_0 = envs.prepare(eval_seed, rand_init_state)
+        obs_g, state_g = envs.prepare(eval_seed, rand_goal_state)
 
         # add dim for t
         for k in obs_0.keys():
@@ -125,7 +133,7 @@ def prepare_targets():
         observations, states, actions, env_info = (
             sample_traj_segment_from_dset(traj_len=frameskip * goal_H + 1)
         )
-        env.update_env(env_info)
+        envs.update_env(env_info)
 
         # get states from val trajs
         init_state = [x[0] for x in states]
@@ -137,7 +145,7 @@ def prepare_targets():
         # exec_actions = self.data_preprocessor.denormalize_actions(actions)
         exec_actions = actions # actions not normalized in dataloader
         # replay actions in env to get gt obses
-        rollout_obses, rollout_states, infos = env.rollout(
+        rollout_obses, rollout_states, infos = envs.rollout(
             eval_seed, init_state, exec_actions.numpy()
         )
         obs_0 = {
@@ -222,8 +230,19 @@ ll_policy = Policy(ll_diffusion, dataset.normalizer)
 
 # ---------------------------------- main loop ----------------------------------#
 
-exec_actions = []
+final_success_rate = []
+optimal_success_rate = []
+final_state_dist = []
+optimal_state_dist = []
+final_coverage = []
+optimal_coverage = []
+
 for i in range(n_evals):
+
+    env.prepare(eval_seed[i], state_0[i])
+    env.set_task_goal(state_g[i])
+
+    # ---------------------------------- plan once ----------------------------------#
     hl_cond = {
         0: obs_0['visual'][i, 0],
         hl_diffusion.horizon - 1: obs_g['visual'][i, 0],
@@ -253,34 +272,79 @@ for i in range(n_evals):
     )
     ll_sequence = ll_samples[0]
 
-    exec_actions.append(ll_action_seq)
-
     fullpath = join(hl_args.savepath, f'{i}.png')
     renderer.composite(fullpath, ll_samples, ncol=1)
 
-exec_actions = np.stack(exec_actions, axis=0)
-env.prepare(eval_seed, state_0)
-env.set_task_goal(state_g)
-e_obses, e_states, infos = env.rollout(eval_seed, state_0, exec_actions)
+    observation = obs_0['visual'][i, 0]
 
+    obses = []
+    rewards = []
+    dones = []
+    infos = []
+    success = []
+    state_dist = []
+    coverage = []
 
-for i in range(n_evals):
-    rollout = e_obses['visual'][i:i+1]
+    for t in tqdm(range(hl_args.max_steps), desc="Env Steps"):
+        if hl_args.replan:
+            if t == 0: action = ll_action_seq[0]
+            else:
+                hl_cond[0] = observation
+                _, hl_traj = hl_policy(hl_cond, 1)
+                hl_state = hl_traj.observations
+
+                B, M = hl_state.shape[:2]
+                ll_cond_ = np.stack([hl_state[:, :-1], hl_state[:, 1:]], axis=2)
+                ll_cond_ = ll_cond_.reshape(B * (M - 1), 2, -1)[0]
+
+                ll_cond = {
+                    0: ll_cond_[0],
+                    hl_args.jump: ll_cond_[-1],
+                }
+                action, trajectories = ll_policy(ll_cond, 1)
+        else:
+            if t >= len(ll_action_seq): break
+            action = ll_action_seq[t]
+
+        o, r, d, info = env.step(action)
+        observation = o['visual']
+        obses.append(o)
+        rewards.append(r)
+        dones.append(d)
+        infos.append(info)
+        if isinstance(o['visual'], torch.Tensor):
+            o['visual'] = o['visual'].numpy()
+        eval_result = env.eval_state(state_g[i], o['visual'])
+        success.append(eval_result['success'])
+        if hl_args.dataset == 'pusht': coverage.append(info['final_coverage'])
+        state_dist.append(eval_result['state_dist'])
+    obses = aggregate_dct(obses)
+    rewards = np.stack(rewards)
+    dones = np.stack(dones)
+    infos = aggregate_dct(infos)
+    final_success_rate.append(success[-1])
+    optimal_success_rate.append(np.any(success))
+    final_state_dist.append(state_dist[-1])
+    optimal_state_dist.append(np.min(state_dist))
+    if hl_args.dataset == 'pusht': 
+        final_coverage.append(coverage[-1])
+        optimal_coverage.append(np.max(coverage))
+
+    if isinstance(obses['visual'], torch.Tensor):
+        rollout = obses['visual'].unsqueeze(0).numpy()
+    else: 
+        rollout = torch.from_numpy(obses['visual']).unsqueeze(0).numpy()
     renderer.composite(join(hl_args.savepath, f'{i}_rollout.png'), rollout, ncol=1)
 
-e_final_state = e_states[:, -1, :]
-eval_results = env.eval_state(state_g, e_final_state)
-successes = eval_results['success']
-
-logs = {
-    f"success_rate" if key == "success" else f"mean_{key}": np.mean(value) if key != "success" else np.mean(value.astype(float))
-    for key, value in eval_results.items()
+results = {
+    "final_success_rate": np.mean(final_success_rate),
+    "optimal_success_rate": np.mean(optimal_success_rate),
+    "final_state_dist": np.mean(final_state_dist),
+    "optimal_state_dist": np.mean(optimal_state_dist),
+    "final_coverage": np.mean(final_coverage) if len(final_coverage)!=0 else 0, 
+    "optimal_coverage": np.mean(optimal_coverage) if len(optimal_coverage)!=0 else 0,
 }
-
-if hl_args.dataset == 'pusht':
-    logs["avg_max_coverage"] = np.mean(infos['max_coverage'][:, -1])
-    logs["avg_final_coverage"] = np.mean(infos['final_coverage'][:, -1])
 
 # save logs
 with open(join(hl_args.savepath, 'eval_logs.json'), 'w') as f:
-    json.dump(logs, f, indent=4, default=float)
+    json.dump(results, f, indent=4, default=float)
