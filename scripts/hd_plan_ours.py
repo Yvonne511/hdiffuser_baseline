@@ -16,6 +16,8 @@ import random
 from einops import rearrange
 import torch
 
+import imageio
+
 def get_flag(flag, default=None):
     if flag in sys.argv:
         i = sys.argv.index(flag)
@@ -59,7 +61,8 @@ def make_env_and_datasets_ours(dataset_name):
 
     env_cfg = OmegaConf.create(cfg)
     
-    if env_cfg.name == "wall" or env_cfg.name == "deformable_env" or "point_maze" in env_cfg.name:
+    # if env_cfg.name == "wall" or env_cfg.name == "deformable_env" or "point_maze" in env_cfg.name:
+    if True:
         from diffuser.env_ours.serial_vector_env import SerialVectorEnv
         env = SerialVectorEnv(
             [
@@ -267,6 +270,13 @@ e_obses, e_states, infos = env.rollout(eval_seed, state_0, exec_actions)
 for i in range(n_evals):
     rollout = e_obses['visual'][i:i+1]
     renderer.composite(join(hl_args.savepath, f'{i}_rollout.png'), rollout, ncol=1)
+    # write rollout video: put rollout and goal side-by-side (resulting frames have shape H x 2*W x C)
+    roll = e_obses['rgb_array'][i]            # (T, H, W, C)
+    goal = obs_g['rgb_array'][i]              # (1, H, W, C)
+    goal_rep = np.repeat(goal, roll.shape[0], axis=0)  # (T, H, W, C)
+    frames = np.concatenate([roll, goal_rep], axis=2).astype(np.uint8)  # concat width -> (T, H, 2*W, C)
+    imageio.mimwrite(join(hl_args.savepath, f'{i}_rollout.mp4'), frames, fps=30)
+    print("### num frames", frames.shape)
 
 e_final_state = e_states[:, -1, :]
 eval_results = env.eval_state(state_g, e_final_state)
@@ -276,6 +286,7 @@ logs = {
     f"success_rate" if key == "success" else f"mean_{key}": np.mean(value) if key != "success" else np.mean(value.astype(float))
     for key, value in eval_results.items()
 }
+import pdb; pdb.set_trace() 
 
 if hl_args.dataset == 'pusht':
     logs["avg_max_coverage"] = np.mean(infos['max_coverage'][:, -1])

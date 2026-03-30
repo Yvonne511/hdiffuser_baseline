@@ -83,6 +83,7 @@ class PushTWrapper(PushTEnv):
         }
 
     def set_task_goal(self, goal_state):
+        print("### set_task_goal in pusht_wrapper!!!")
         if self.use_sin_cos:
             goal_angle = np.arctan2(goal_state[4], goal_state[5])
         else:
@@ -134,6 +135,7 @@ class PushTWrapper(PushTEnv):
         obses, rewards, dones, infos = self.step_multiple(actions)
         for k in obses.keys():
             obses[k] = np.vstack([np.expand_dims(obs[k], 0), obses[k]])
+        obses['rgb_array'] = infos['rgb_array']
         states = np.vstack([np.expand_dims(state, 0), infos["state"]])
         states = np.stack(states)
         return obses, states, infos

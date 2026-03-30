@@ -18,6 +18,8 @@ import torch
 from diffuser.env_ours.utils import aggregate_dct
 from tqdm import tqdm
 
+import imageio
+
 def get_flag(flag, default=None):
     if flag in sys.argv:
         i = sys.argv.index(flag)
@@ -51,6 +53,10 @@ s = 99
 frameskip= 1
 goal_H = hl_args.horizon*hl_args.jump
 seed(s)
+# import pdb; pdb.set_trace()
+hl_args.savepath = hl_args.savepath + "_replan_v2" #TODO: change here!!!
+if not os.path.exists(hl_args.savepath):
+    os.makedirs(hl_args.savepath)
 # ---------------------------------- setup ----------------------------------#
 
 def make_env_and_datasets_ours(dataset_name):
@@ -284,6 +290,8 @@ for i in range(n_evals):
     success = []
     state_dist = []
     coverage = []
+    visuals = []
+    cur_goal = obs_g['rgb_array'][i, 0]
 
     for t in tqdm(range(hl_args.max_steps), desc="Env Steps"):
         if hl_args.replan:
@@ -312,12 +320,17 @@ for i in range(n_evals):
         rewards.append(r)
         dones.append(d)
         infos.append(info)
+        visual = np.concatenate([o['rgb_array'], cur_goal], axis=1)
+        visuals.append(visual)
         if isinstance(o['visual'], torch.Tensor):
             o['visual'] = o['visual'].numpy()
         eval_result = env.eval_state(state_g[i], o['visual'])
         success.append(eval_result['success'])
         if hl_args.dataset == 'pusht': coverage.append(info['final_coverage'])
         state_dist.append(eval_result['state_dist'])
+        if eval_result['success']:
+            print(f"Trial {i} succeeds, terminating at time {t}")
+            break
     obses = aggregate_dct(obses)
     rewards = np.stack(rewards)
     dones = np.stack(dones)
@@ -326,6 +339,11 @@ for i in range(n_evals):
     optimal_success_rate.append(np.any(success))
     final_state_dist.append(state_dist[-1])
     optimal_state_dist.append(np.min(state_dist))
+
+    frames = np.stack(visuals)
+    print("### num frames", frames.shape)
+    imageio.mimwrite(join(hl_args.savepath, f'{i}_rollout_success_{np.any(success)}.mp4'), frames, fps=30)
+    
     if hl_args.dataset == 'pusht': 
         final_coverage.append(coverage[-1])
         optimal_coverage.append(np.max(coverage))
