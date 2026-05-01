@@ -206,6 +206,21 @@ def sample_traj_segment_from_dset(traj_len):
 
 obs_0, obs_g, state_0, state_g, gt_actions = prepare_targets()
 
+def combine_and_replace(plan_path, rollout_path, out_path):
+    plan_img = imageio.imread(plan_path)
+    rollout_img = imageio.imread(rollout_path)
+    if plan_img.shape[0] != rollout_img.shape[0]:
+        h = max(plan_img.shape[0], rollout_img.shape[0])
+        def pad_h(img, h):
+            pad = np.zeros((h - img.shape[0], img.shape[1], img.shape[2]), dtype=img.dtype)
+            return np.concatenate([img, pad], axis=0)
+        plan_img = pad_h(plan_img, h)
+        rollout_img = pad_h(rollout_img, h)
+    combined = np.concatenate([plan_img, rollout_img], axis=1)
+    imageio.imsave(out_path, combined)
+    os.remove(plan_path)
+    os.remove(rollout_path)
+
 # ---------------------------------- loading ----------------------------------#
 
 
@@ -340,19 +355,25 @@ for i in range(n_evals):
     final_state_dist.append(state_dist[-1])
     optimal_state_dist.append(np.min(state_dist))
 
-    frames = np.stack(visuals)
+    frames = np.stack(visuals).astype(np.uint8)
     print("### num frames", frames.shape)
     imageio.mimwrite(join(hl_args.savepath, f'{i}_rollout_success_{np.any(success)}.mp4'), frames, fps=30)
-    
-    if hl_args.dataset == 'pusht': 
+
+    if hl_args.dataset == 'pusht':
         final_coverage.append(coverage[-1])
         optimal_coverage.append(np.max(coverage))
 
     if isinstance(obses['visual'], torch.Tensor):
         rollout = obses['visual'].unsqueeze(0).numpy()
-    else: 
+    else:
         rollout = torch.from_numpy(obses['visual']).unsqueeze(0).numpy()
-    renderer.composite(join(hl_args.savepath, f'{i}_rollout.png'), rollout, ncol=1)
+    rollout_path = join(hl_args.savepath, f'{i}_rollout.png')
+    renderer.composite(rollout_path, rollout, ncol=1)
+    combine_and_replace(
+        join(hl_args.savepath, f'{i}.png'),
+        rollout_path,
+        join(hl_args.savepath, f'{i}_combined.png'),
+    )
 
 results = {
     "final_success_rate": np.mean(final_success_rate),

@@ -46,6 +46,13 @@ python scripts/train.py --config config.point_maze_large_ll --dataset point_maze
 python scripts/hd_plan_ours.py --dataset point_maze_large --goal_source random_state --n_evals 10
 python scripts/hd_plan_ours_v2.py --dataset point_maze_large --goal_source random_state --n_evals 1 --replan --max_steps 200
 ```
+Point_maze_giant Command
+```
+python scripts/train.py --config config.point_maze_giant_hl --dataset point_maze_giant
+python scripts/train.py --config config.point_maze_giant_ll --dataset point_maze_giant
+python scripts/hd_plan_ours.py --dataset point_maze_giant --goal_source random_state --n_evals 10
+python scripts/hd_plan_ours_v2.py --dataset point_maze_giant --goal_source random_state --n_evals 1 --replan --max_steps 50
+```
 
 # Simple Hierarchical Planning with Diffusion
 Chang Chen, Fei Deng, Kenji Kawaguchi, Caglar Gulcehre, Sungjin Ahn
