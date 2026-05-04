@@ -53,6 +53,13 @@ python scripts/train.py --config config.point_maze_giant_ll --dataset point_maze
 python scripts/hd_plan_ours.py --dataset point_maze_giant --goal_source random_state --n_evals 10
 python scripts/hd_plan_ours_v2.py --dataset point_maze_giant --goal_source random_state --n_evals 1 --replan --max_steps 50
 ```
+dmcontrol_reacher Command
+```
+python scripts/train.py --config config.dmcontrol_reacher3_hl --dataset dmcontrol_reacher3
+python scripts/train.py --config config.dmcontrol_reacher3_ll --dataset dmcontrol_reacher3
+python scripts/hd_plan_ours.py --dataset dmcontrol_reacher3 --goal_source random_state --n_evals 10
+python scripts/hd_plan_ours_v2.py --dataset dmcontrol_reacher3 --goal_source random_state --n_evals 1 --replan --max_steps 50
+```
 
 # Simple Hierarchical Planning with Diffusion
 Chang Chen, Fei Deng, Kenji Kawaguchi, Caglar Gulcehre, Sungjin Ahn
