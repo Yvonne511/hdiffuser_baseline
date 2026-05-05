@@ -635,6 +635,87 @@ class PointMazeRenderer:
         imageio.imsave(savepath, images)
         print(f'Saved {len(paths)} samples to: {savepath}')
 
+class dmcontrolReacherRenderer:
+    SCALE = 50
+    IMG_CENTER = 112  # for 224x224 image
+
+    def __init__(self, env):
+        self.env_name = env
+        self.env = gym.make(f"{env}-v0", domain='reacher', task='three_hard', state_based=True)
+        self._remove_margins = False
+
+    def _state_to_ee(self, state):
+        physics = self.env.unwrapped.dm_env.physics
+        n_qpos = len(physics.data.qpos)
+        physics.data.qpos[:] = state[:n_qpos]
+        physics.forward()
+        return physics.named.data.geom_xpos['finger', :2].copy()  # (x, y) world meters
+
+    def renders(self, observations, title=None):
+
+        # get image given first and last observation
+        self.env.prepare(0, observations[0])
+        frame = self.env.render().astype(np.uint8)
+
+        H, W = frame.shape[:2]
+
+        scale, x_offset, y_offset = 0.62, self.IMG_CENTER, self.IMG_CENTER
+        obs = np.asarray(observations)
+        ee = np.array([self._state_to_ee(obs[t]) for t in range(len(obs))])  # (T, 2) world meters
+        ee_px = np.stack([
+             ee[:, 0] * 224 / scale + x_offset,
+            -ee[:, 1] * 224 / scale + y_offset,
+        ], axis=-1)
+
+        plt.clf()
+        fig = plt.gcf()
+        fig.set_size_inches(5, 5)
+
+        ax = plt.gca()
+        ax.imshow(frame, extent=(0, W, H, 0))
+
+        path_length = len(ee_px)
+
+        # ----- plot tracks on top -----
+        colors_T = plt.cm.Blues(np.linspace(0.3, 0.9, path_length))
+
+        ax.plot(ee_px[:, 0], ee_px[:, 1], color="blue", alpha=0.5, linewidth=2, zorder=10)
+        ax.scatter(ee_px[:, 0], ee_px[:, 1], c=colors_T, s=18, zorder=20, label="T")
+
+        ax.scatter([ee_px[0, 0]],  [ee_px[0, 1]],  marker="o", s=80, color="lightblue", zorder=30)
+        ax.scatter([ee_px[-1, 0]], [ee_px[-1, 1]], marker="X", s=100, color="blue", zorder=30)
+
+        # lock to image coords so overlay doesn't autoscale weirdly
+        ax.set_xlim(0, W)
+        ax.set_ylim(H, 0)
+
+        ax.set_aspect("equal", adjustable="box")
+        ax.axis("off")
+        if title is not None:
+            ax.set_title(title)
+
+        img = plot2img(fig, remove_margins=self._remove_margins)
+        return img
+
+    def composite(self, savepath, paths, ncol=5, **kwargs):
+        '''
+            savepath : str
+            paths : [ n_paths x horizon x state_dim ]
+        '''
+        assert len(paths) % ncol == 0, 'Number of paths must be divisible by number of columns'
+
+        images = []
+        for path, kw in zipkw(paths, **kwargs):
+            img = self.renders(*path, **kw)
+            images.append(img)
+        images = np.stack(images, axis=0)
+
+        nrow = len(images) // ncol
+        images = einops.rearrange(images,
+            '(nrow ncol) H W C -> (nrow H) (ncol W) C', nrow=nrow, ncol=ncol)
+        imageio.imsave(savepath, images)
+        print(f'Saved {len(paths)} samples to: {savepath}')
+        
 # -----------------------------------------------------------------------------#
 # ---------------------------------- rollouts ---------------------------------#
 # -----------------------------------------------------------------------------#
