@@ -641,7 +641,7 @@ class dmcontrolReacherRenderer:
 
     def __init__(self, env):
         self.env_name = env
-        self.env = gym.make(f"{env}-v0", domain='reacher', task='three_hard', state_based=True)
+        self.env = gym.make(f"{env}-v0", domain='reacher', task='three_hard', state_based=True, use_sin_cos=True) # TODO: hack
         self._remove_margins = False
 
     def _state_to_ee(self, state):
@@ -661,6 +661,16 @@ class dmcontrolReacherRenderer:
 
         scale, x_offset, y_offset = 0.62, self.IMG_CENTER, self.IMG_CENTER
         obs = np.asarray(observations)
+        # sin cos to angle
+        if self.env.unwrapped.use_sin_cos:
+            obs = obs.copy()
+            n = self.env.unwrapped.n_joints
+            qpos = np.stack(
+                [np.arctan2(obs[:, 2 * j], obs[:, 2 * j + 1]) for j in range(n)],
+                axis=-1,
+            )
+            qvel = obs[:, 2 * n:]
+            obs = np.concatenate([qpos, qvel], axis=-1)
         ee = np.array([self._state_to_ee(obs[t]) for t in range(len(obs))])  # (T, 2) world meters
         ee_px = np.stack([
              ee[:, 0] * 224 / scale + x_offset,
