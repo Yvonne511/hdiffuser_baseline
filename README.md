@@ -4,7 +4,7 @@
 conda env create -f environment.yml
 conda activate diffusion
 pip install -e .
-pip install hydra-core==1.2.0 pymunk==6.8.0 pygame==2.5.2 shapely==2.0.3 opencv-python==4.6.0.66 psutil==5.9.8 decord==0.6.0 torchvision==0.18.0
+pip install hydra-core==1.2.0 pymunk==6.8.0 pygame==2.5.2 shapely==2.0.3 opencv-python==4.6.0.66 psutil==5.9.8 decord==0.6.0 torchvision==0.18.0 imageio-ffmpeg==0.5.1
 ```
 
 ### Command
