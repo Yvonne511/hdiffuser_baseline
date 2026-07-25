@@ -30,6 +30,7 @@ plan_args_to_watch = [
     ('goal_source', ''),
     ('n_evals', ''),
     ("jump", "J"),
+    ('data_aug', 'aug'),
 ]
 
 logbase = "logs"

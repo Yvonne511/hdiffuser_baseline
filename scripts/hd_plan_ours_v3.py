@@ -19,6 +19,7 @@ from diffuser.env_ours.utils import aggregate_dct
 from tqdm import tqdm
 
 import imageio
+import time
 
 def get_flag(flag, default=None):
     if flag in sys.argv:
@@ -36,6 +37,9 @@ class HLParser(utils.Parser):
     n_evals: int = 50
     replan: bool = False
     max_steps: int = 500
+    eval_idx: int = 1      # which episode of the n_evals to run; -1 runs all
+    seed: int = 99         # planner / diffusion sampling randomness
+    task_seed: int = 99    # init & goal state sampling; keep fixed across seeds
 
 
 hl_args = HLParser().parse_args("plan")
@@ -49,10 +53,11 @@ ll_args = LLParser().parse_args("plan")
 
 goal_source = hl_args.goal_source
 n_evals = hl_args.n_evals
-s = 99
 frameskip= 1
 goal_H = hl_args.horizon*hl_args.jump
-seed(s)
+## task sampling below must not depend on hl_args.seed, so that episode i is the
+## same episode across seeds
+seed(hl_args.task_seed)
 
 hl_args.savepath = hl_args.savepath + "_replan_v3"
 if not os.path.exists(hl_args.savepath):
@@ -97,7 +102,8 @@ def make_env_and_datasets_ours(dataset_name):
 
 env, envs, dsets, orig_dset = make_env_and_datasets_ours(hl_args.dataset)
 dset = orig_dset['valid']
-eval_seed = [s * n + 1 for n in range(n_evals)]
+eval_seed = [hl_args.task_seed * n + 1 for n in range(n_evals)]
+eval_idx = list(range(n_evals)) if hl_args.eval_idx < 0 else [hl_args.eval_idx]
 
 def prepare_targets():
     states = []
@@ -235,6 +241,9 @@ ll_diffusion_experiment = utils.load_diffusion(
 ll_diffusion = ll_diffusion_experiment.ema
 ll_policy = Policy(ll_diffusion, dataset.normalizer)
 
+## targets are fixed by now, so re-seeding here only varies diffusion sampling
+seed(hl_args.seed)
+
 # ---------------------------------- helpers ----------------------------------#
 
 def plan_from_state(obs_start, obs_goal):
@@ -270,6 +279,11 @@ def plan_from_state(obs_start, obs_goal):
     )
     return ll_action_seq, ll_obs
 
+def to_numpy(value):
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu().numpy()
+    return np.asarray(value)
+
 # ---------------------------------- main loop ----------------------------------#
 
 final_success_rate = []
@@ -279,8 +293,19 @@ optimal_state_dist = []
 final_coverage = []
 optimal_coverage = []
 
-for i in range(n_evals):
+final_success_rate_ours = []
+optimal_success_rate_ours = []
+final_state_dist_ours = []
+final_coverage_ours = []
+optimal_coverage_ours = []
 
+eval_times = {}
+
+for i in range(n_evals):
+    if i not in eval_idx:
+        continue
+
+    eval_start = time.time()
     env.prepare(eval_seed[i], state_0[i])
     env.set_task_goal(state_g[i])
 
@@ -293,6 +318,9 @@ for i in range(n_evals):
     fullpath = join(hl_args.savepath, f'{i}.png')
     renderer.composite(fullpath, ll_obs, ncol=1)
 
+    all_planned_actions = [to_numpy(ll_action_seq)]
+    trajectory_states = []
+
     obses = []
     rewards = []
     dones = []
@@ -301,6 +329,9 @@ for i in range(n_evals):
     state_dist = []
     coverage = []
     visuals = []
+    success_ours = []
+    state_dist_ours = []
+    coverage_ours = []
 
     if hl_args.replan:
         total_steps = 0
@@ -332,11 +363,18 @@ for i in range(n_evals):
                     state_dist.append(eval_result['state_dist'])
                     if hl_args.dataset == 'pusht':
                         coverage.append(info['final_coverage'])
+                    cur_state = info['state'] if 'state' in info else observation
+                    trajectory_states.append(to_numpy(cur_state))
 
                     if d:
                         done = True
                         break
                 
+                success_ours.append(success[-1])
+                state_dist_ours.append(state_dist[-1])
+                if coverage:
+                    coverage_ours.append(coverage[-1])
+
                 if success[-1]:
                     done = True
                     break
@@ -344,6 +382,7 @@ for i in range(n_evals):
                 # Replan from current observation after executing the full plan
                 if not done and total_steps < hl_args.max_steps:
                     ll_action_seq, _ = plan_from_state(observation, goal_observation)
+                    all_planned_actions.append(to_numpy(ll_action_seq))
     else:
         for t in tqdm(range(hl_args.max_steps), desc="Env Steps"):
             if t >= len(ll_action_seq):
@@ -366,6 +405,8 @@ for i in range(n_evals):
             if hl_args.dataset == 'pusht':
                 coverage.append(info['final_coverage'])
             state_dist.append(eval_result['state_dist'])
+            cur_state = info['state'] if 'state' in info else observation
+            trajectory_states.append(to_numpy(cur_state))
 
     obses = aggregate_dct(obses)
     rewards = np.stack(rewards)
@@ -375,6 +416,14 @@ for i in range(n_evals):
     optimal_success_rate.append(np.any(success))
     final_state_dist.append(state_dist[-1])
     optimal_state_dist.append(np.min(state_dist))
+
+    if hl_args.replan:
+        final_success_rate_ours.append(success_ours[-1])
+        optimal_success_rate_ours.append(np.any(success_ours))
+        final_state_dist_ours.append(state_dist_ours[-1])
+        cov_ours = coverage_ours[-1] if coverage_ours else 0.0
+        final_coverage_ours.append(cov_ours)
+        optimal_coverage_ours.append(cov_ours)
 
     frames = np.stack(visuals).astype(np.uint8)
     print("### num frames", frames.shape)
@@ -396,6 +445,10 @@ for i in range(n_evals):
         join(hl_args.savepath, f'{i}_combined.png'),
     )
 
+    eval_times[i] = time.time() - eval_start
+    np.save(join(hl_args.savepath, f'eval_{i}_planned_actions.npy'), np.array(all_planned_actions, dtype=object))
+    np.save(join(hl_args.savepath, f'eval_{i}_trajectory_states.npy'), np.stack(trajectory_states))
+
 results = {
     "final_success_rate": np.mean(final_success_rate),
     "optimal_success_rate": np.mean(optimal_success_rate),
@@ -403,7 +456,15 @@ results = {
     "optimal_state_dist": np.mean(optimal_state_dist),
     "final_coverage": np.mean(final_coverage) if len(final_coverage)!=0 else 0,
     "optimal_coverage": np.mean(optimal_coverage) if len(optimal_coverage)!=0 else 0,
+    "success_rate_ours": np.mean(final_success_rate_ours) if final_success_rate_ours else 0.0,
+    "mean_state_dist_ours": np.mean(final_state_dist_ours) if final_state_dist_ours else 0.0,
+    "optimal_success_rate_ours": np.mean(optimal_success_rate_ours) if optimal_success_rate_ours else 0.0,
+    "avg_final_coverage_ours": np.mean(final_coverage_ours) if final_coverage_ours else 0.0,
+    "avg_optimal_coverage_ours": np.mean(optimal_coverage_ours) if optimal_coverage_ours else 0.0,
 }
 
 with open(join(hl_args.savepath, 'eval_logs.json'), 'w') as f:
     json.dump(results, f, indent=4, default=float)
+
+with open(join(hl_args.savepath, 'eval_times.json'), 'w') as f:
+    json.dump({str(k): v for k, v in eval_times.items()}, f, indent=4)
